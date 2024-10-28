@@ -51632,6 +51632,17 @@ var createEmbeddings = async (s2) => {
     model: "text-embedding-ada-002"
   });
 };
+var askContextQuestion = async (question, context) => {
+  return ai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      { role: "system", content: 'Answer the question only using the context below, and if the question cannot be answered based on the context say, "idk bro"' },
+      { role: "user", content: `Context: ${context}, 
+
+Question; ${question}` }
+    ]
+  });
+};
 
 // src/pinecone.ts
 var p2 = new import_pinecone.Pinecone({ apiKey: process.env["PINECONE_KEY"] || "pclocal" });
@@ -51644,13 +51655,35 @@ var addVector = async (s2) => {
     return {
       id: embeddings._request_id,
       values: d2.embedding,
-      metadata: {}
+      metadata: { entry: s2 }
+      // too lazy to store in db or other store sorry not sorry
     };
   });
   return await index.namespace("example-namespace").upsert(values);
 };
+var queryDB = async (vector) => {
+  return index.namespace("example-namespace").query({
+    vector,
+    topK: 3,
+    includeValues: false,
+    includeMetadata: true
+  });
+};
 var describeIndex = async () => {
   return await index.describeIndexStats();
+};
+
+// src/utils.ts
+var SCORE_THRESHOLD = 0.72;
+var toUsableContext = (input) => {
+  if (input.matches.length < 1) {
+    return null;
+  }
+  const values = input.matches.map((match) => {
+    console.log(match.metadata, match.score);
+    return match.score < SCORE_THRESHOLD ? null : match.metadata["entry"];
+  }).filter((s2) => s2 != null);
+  return values.length > 0 ? values.join(". ").trim() + "." : null;
 };
 
 // src/app.ts
@@ -51663,8 +51696,16 @@ app.post("/insert", async (req, res) => {
   res.send("insert data success");
 });
 app.post("/ask", async (req, res) => {
-  console.log(req.body);
-  res.json({});
+  const queestion = req.body.value;
+  const questionEmbeddings = await createEmbeddings(queestion);
+  const closestThree = await queryDB(questionEmbeddings.data.flatMap((d2) => d2.embedding));
+  const context = toUsableContext(closestThree);
+  if (!context) {
+    res.status(404).send("idk bro");
+  } else {
+    const result = await askContextQuestion(queestion, context);
+    res.status(200).send(result.choices[0].message.content);
+  }
 });
 app.get("/describe", async (req, res) => {
   res.send(await describeIndex());
