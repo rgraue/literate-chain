@@ -32,6 +32,7 @@ app.post('/ask', async (req, res) => {
     
     if (!context) {
         // short circuit if no relevant context
+        // save money by not calling llm
         res.status(404).send('idk bro');
     } else {
         const result = await askContextQuestion(question, context);

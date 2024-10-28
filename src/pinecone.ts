@@ -2,7 +2,6 @@ import { Pinecone } from "@pinecone-database/pinecone";
 import { createEmbeddings } from "./ai";
 
 const p = new Pinecone({apiKey: process.env['PINECONE_KEY'] || 'pclocal'});
-
 const index = p.Index('', 'http://localhost:5081');
 
 export const addVector = async (s: string) => {
